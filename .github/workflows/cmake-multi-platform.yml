@@ -61,6 +61,17 @@ jobs:
             # 检测构建系统并编译
             if [ -f 'Makefile' ]; then
               echo '==> Building with Make'
+              
+              # 修复 Makefile 中的 -mtune=generic 问题
+              if grep -q 'mtune=generic' Makefile; then
+                echo 'Patching Makefile to remove -mtune=generic...'
+                sed -i 's/-mtune=generic/-mtune=cortex-a7/g' Makefile
+              fi
+              
+              # 设置 ARM 编译标志
+              export CFLAGS=\"-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard\"
+              export CXXFLAGS=\"-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard\"
+              
               make -j\$(nproc)
             elif [ -f 'CMakeLists.txt' ]; then
               echo '==> Building with CMake'
