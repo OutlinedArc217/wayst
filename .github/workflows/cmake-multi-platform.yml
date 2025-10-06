@@ -1,0 +1,37 @@
+name: Build wayst for ARMv7-AHF
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Rust toolchain
+        uses: rust-lang/setup-rust@v1
+        with:
+          toolchain: stable
+          components: rust-src
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf
+
+      - name: Build for ARMv7-AHF
+        run: |
+          cargo build --target=armv7-unknown-linux-gnueabihf --release
+          ls -lh target/armv7-unknown-linux-gnueabihf/release/wayst
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
