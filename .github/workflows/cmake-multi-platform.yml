@@ -70,9 +70,19 @@ jobs:
                 sed -i 's/-mtune=generic/-mtune=cortex-a7/g' Makefile
               fi
               
+              # 添加 -lrt 库到链接标志
+              if grep -q 'LDFLAGS' Makefile; then
+                echo 'Adding -lrt to LDFLAGS...'
+                sed -i 's/\(LDFLAGS.*\)/\1 -lrt/' Makefile
+              else
+                echo 'Adding LDFLAGS with -lrt...'
+                sed -i '1i LDFLAGS += -lrt' Makefile
+              fi
+              
               # 设置 ARM 编译标志
               export CFLAGS=\"-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard\"
               export CXXFLAGS=\"-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard\"
+              export LDFLAGS=\"-lrt\"
               
               make -j\$(nproc)
             elif [ -f 'CMakeLists.txt' ]; then
