@@ -1,4 +1,4 @@
-name: Build wayst for ARMv7-AHF
+name: Build ARMv7-AHF
 
 on:
   push:
@@ -9,29 +9,26 @@ on:
       - main
 
 jobs:
-  build:
+  build-armv7:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Rust toolchain
-        uses: rust-lang/setup-rust@v1
-        with:
-          toolchain: stable
-          components: rust-src
-
-      - name: Install cross toolchain
+      - name: Install ARM cross-compiler
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabihf
+          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf make
 
-      - name: Build for ARMv7-AHF
+      - name: Build project for ARMv7-AHF
         run: |
-          cargo build --target=armv7-unknown-linux-gnueabihf --release
-          ls -lh target/armv7-unknown-linux-gnueabihf/release/wayst
-        env:
-          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-          CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
-          CXX_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-g++
+          make clean
+          # 使用交叉编译器
+          make CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++
+
+      - name: Upload ARMv7 binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: armv7-binary
+          path: your_executable_name  # 替换为 Makefile 生成的可执行文件名
