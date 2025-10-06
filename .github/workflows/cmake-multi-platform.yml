@@ -176,39 +176,30 @@ jobs:
         
         # 创建 control 文件
         cat > ipk-build/control/control << EOF
-Package: ${PKG_NAME}
-Version: ${VERSION}-1
-Architecture: ${ARCH}
-Maintainer: GitHub Actions <actions@github.com>
-Section: utils
-Priority: optional
-Depends: libfreetype6, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libwayland-cursor0, libx11-6, libxrandr2, libegl1, libgl1, libutf8proc2
-Description: A simple terminal emulator
- Wayst is a simple terminal emulator for Wayland and X11.
- Built for ARMv7-A with NEON and VFPv4 hard float.
- .
- Features:
-  - Wayland and X11 support
-  - GPU-accelerated rendering
-  - UTF-8 support
-  - Customizable configuration
-Homepage: https://github.com/91861/wayst
-EOF
+        Package: ${PKG_NAME}
+        Version: ${VERSION}-1
+        Architecture: ${ARCH}
+        Maintainer: GitHub Actions <actions@github.com>
+        Section: utils
+        Priority: optional
+        Depends: libfreetype6, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libwayland-cursor0, libx11-6, libxrandr2, libegl1, libgl1, libutf8proc2
+        Description: A simple terminal emulator
+        EOF
         
         # 创建 postinst 脚本
         cat > ipk-build/control/postinst << 'EOF'
-#!/bin/sh
-echo "Wayst terminal emulator has been installed to /usr/bin/wayst"
-echo "Run 'wayst' to start the terminal"
-exit 0
-EOF
+        #!/bin/sh
+        echo "Wayst terminal emulator has been installed to /usr/bin/wayst"
+        echo "Run 'wayst' to start the terminal"
+        exit 0
+        EOF
         chmod +x ipk-build/control/postinst
         
         # 创建 prerm 脚本
         cat > ipk-build/control/prerm << 'EOF'
-#!/bin/sh
-exit 0
-EOF
+        #!/bin/sh
+        exit 0
+        EOF
         chmod +x ipk-build/control/prerm
         
         # 计算安装大小
