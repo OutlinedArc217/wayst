@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-armv7:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # 使用 22.04，它对 armhf 支持更好
     
     steps:
     - name: Checkout code
@@ -17,100 +17,112 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Install cross-compilation toolchain
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          gcc-arm-linux-gnueabihf \
-          g++-arm-linux-gnueabihf \
-          binutils-arm-linux-gnueabihf \
-          pkg-config
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm
 
-    - name: Install ARM dependencies
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build in ARM container
       run: |
-        # 添加 armhf 架构
-        sudo dpkg --add-architecture armhf
-        sudo apt-get update
+        docker run --rm \
+          --platform linux/arm/v7 \
+          -v $PWD:/workspace \
+          -w /workspace \
+          debian:bullseye-slim \
+          bash -c "
+            set -e
+            
+            # 更新包列表并安装依赖
+            apt-get update
+            apt-get install -y \
+              build-essential \
+              gcc \
+              g++ \
+              make \
+              cmake \
+              pkg-config \
+              git \
+              libfreetype6-dev \
+              libfontconfig1-dev \
+              libxkbcommon-dev \
+              libwayland-dev \
+              libgl1-mesa-dev \
+              libglu1-mesa-dev \
+              libegl1-mesa-dev \
+              libx11-dev \
+              libxrandr-dev \
+              libxi-dev \
+              libxcursor-dev \
+              libxinerama-dev
+            
+            # 检测构建系统并编译
+            if [ -f 'Makefile' ]; then
+              echo '==> Building with Make'
+              make -j\$(nproc)
+            elif [ -f 'CMakeLists.txt' ]; then
+              echo '==> Building with CMake'
+              mkdir -p build
+              cd build
+              cmake .. -DCMAKE_BUILD_TYPE=Release
+              make -j\$(nproc)
+            elif [ -f 'meson.build' ]; then
+              echo '==> Building with Meson'
+              apt-get install -y python3-pip ninja-build
+              pip3 install meson
+              meson setup build --buildtype=release
+              meson compile -C build
+            else
+              echo 'No build system detected!'
+              exit 1
+            fi
+            
+            # 查找并显示编译的二进制文件
+            echo '==> Searching for binary files:'
+            find . -type f -executable -name 'wayst*' -o -name '*wayst*' | grep -v '.git'
+          "
+
+    - name: Verify and collect binaries
+      run: |
+        echo "==> Verifying binary architecture:"
         
-        # 安装交叉编译所需的库
-        sudo apt-get install -y \
-          libfreetype6-dev:armhf \
-          libfontconfig1-dev:armhf \
-          libxkbcommon-dev:armhf \
-          libwayland-dev:armhf \
-          libgl1-mesa-dev:armhf \
-          libglu1-mesa-dev:armhf \
-          libegl1-mesa-dev:armhf
-
-    - name: Set up PKG_CONFIG for cross compilation
-      run: |
-        echo "PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig" >> $GITHUB_ENV
-        echo "PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
-
-    - name: Build for ARMv7 hard-float
-      run: |
-        export CC=arm-linux-gnueabihf-gcc
-        export CXX=arm-linux-gnueabihf-g++
-        export AR=arm-linux-gnueabihf-ar
-        export RANLIB=arm-linux-gnueabihf-ranlib
-        export STRIP=arm-linux-gnueabihf-strip
+        # 安装 file 工具
+        sudo apt-get update
+        sudo apt-get install -y file
         
-        # 如果项目使用 Makefile
-        if [ -f "Makefile" ]; then
-          make CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
-        # 如果项目使用 CMake
-        elif [ -f "CMakeLists.txt" ]; then
-          mkdir -p build
-          cd build
-          cmake .. \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=arm \
-            -DCMAKE_C_COMPILER=$CC \
-            -DCMAKE_CXX_COMPILER=$CXX \
-            -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf \
-            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
-          make -j$(nproc)
-        # 如果项目使用 Meson
-        elif [ -f "meson.build" ]; then
-          cat > cross-armv7.txt << EOF
-        [binaries]
-        c = 'arm-linux-gnueabihf-gcc'
-        cpp = 'arm-linux-gnueabihf-g++'
-        ar = 'arm-linux-gnueabihf-ar'
-        strip = 'arm-linux-gnueabihf-strip'
-        pkgconfig = 'pkg-config'
-
-        [host_machine]
-        system = 'linux'
-        cpu_family = 'arm'
-        cpu = 'armv7'
-        endian = 'little'
-        EOF
-          meson setup build --cross-file cross-armv7.txt
-          meson compile -C build
+        # 查找编译的二进制文件
+        BINARY=$(find . -type f -executable -name "wayst" | grep -v '.git' | head -n 1)
+        
+        if [ -z "$BINARY" ]; then
+          echo "Binary 'wayst' not found, searching for alternatives..."
+          BINARY=$(find build -type f -executable 2>/dev/null | grep -v -E '\.(o|a|so|cmake)$' | head -n 1)
         fi
-
-    - name: Verify binary architecture
-      run: |
-        # 查找编译生成的二进制文件
-        BINARY=$(find . -name "wayst" -type f -executable | head -n 1)
+        
         if [ -n "$BINARY" ]; then
           echo "Found binary: $BINARY"
-          file $BINARY
-          arm-linux-gnueabihf-readelf -h $BINARY
+          file "$BINARY"
+          
+          # 创建 artifacts 目录
+          mkdir -p artifacts
+          cp "$BINARY" artifacts/wayst
+          
+          # 复制可能的其他文件
+          [ -f "README.md" ] && cp README.md artifacts/ || true
+          [ -f "LICENSE" ] && cp LICENSE artifacts/ || true
         else
-          echo "Binary not found, listing all files:"
-          find . -type f -executable
+          echo "ERROR: No binary found!"
+          echo "Directory contents:"
+          find . -type f | grep -v '.git' | head -20
+          exit 1
         fi
 
     - name: Package artifacts
       run: |
-        mkdir -p artifacts
-        find . -name "wayst" -type f -executable -exec cp {} artifacts/ \;
         cd artifacts
         tar -czf wayst-armv7-hf.tar.gz *
+        ls -lh wayst-armv7-hf.tar.gz
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
