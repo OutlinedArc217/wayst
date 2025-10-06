@@ -1,34 +1,128 @@
-name: Build ARMv7-AHF
+name: Cross Compile for ARMv7 Hard Float
 
 on:
   push:
-    branches:
-      - master
+    branches: [ main, master ]
   pull_request:
-    branches:
-      - master
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build-armv7:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
 
-      - name: Install ARM cross-compiler
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf make
+    - name: Install cross-compilation toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          binutils-arm-linux-gnueabihf \
+          pkg-config
 
-      - name: Build project for ARMv7-AHF
-        run: |
-          make clean
-          # 使用交叉编译器
-          make CC=arm-linux-gnueabihf-gcc CXX=arm-linux-gnueabihf-g++
+    - name: Install ARM dependencies
+      run: |
+        # 添加 armhf 架构
+        sudo dpkg --add-architecture armhf
+        sudo apt-get update
+        
+        # 安装交叉编译所需的库
+        sudo apt-get install -y \
+          libfreetype6-dev:armhf \
+          libfontconfig1-dev:armhf \
+          libxkbcommon-dev:armhf \
+          libwayland-dev:armhf \
+          libgl1-mesa-dev:armhf \
+          libglu1-mesa-dev:armhf \
+          libegl1-mesa-dev:armhf
 
-      - name: Upload ARMv7 binary
-        uses: actions/upload-artifact@v3
-        with:
-          name: armv7-binary
-          path: your_executable_name  # 替换为 Makefile 生成的可执行文件名
+    - name: Set up PKG_CONFIG for cross compilation
+      run: |
+        echo "PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig" >> $GITHUB_ENV
+        echo "PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig" >> $GITHUB_ENV
+
+    - name: Build for ARMv7 hard-float
+      run: |
+        export CC=arm-linux-gnueabihf-gcc
+        export CXX=arm-linux-gnueabihf-g++
+        export AR=arm-linux-gnueabihf-ar
+        export RANLIB=arm-linux-gnueabihf-ranlib
+        export STRIP=arm-linux-gnueabihf-strip
+        
+        # 如果项目使用 Makefile
+        if [ -f "Makefile" ]; then
+          make CC=$CC CXX=$CXX AR=$AR RANLIB=$RANLIB
+        # 如果项目使用 CMake
+        elif [ -f "CMakeLists.txt" ]; then
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=$CC \
+            -DCMAKE_CXX_COMPILER=$CXX \
+            -DCMAKE_FIND_ROOT_PATH=/usr/arm-linux-gnueabihf \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+          make -j$(nproc)
+        # 如果项目使用 Meson
+        elif [ -f "meson.build" ]; then
+          cat > cross-armv7.txt << EOF
+        [binaries]
+        c = 'arm-linux-gnueabihf-gcc'
+        cpp = 'arm-linux-gnueabihf-g++'
+        ar = 'arm-linux-gnueabihf-ar'
+        strip = 'arm-linux-gnueabihf-strip'
+        pkgconfig = 'pkg-config'
+
+        [host_machine]
+        system = 'linux'
+        cpu_family = 'arm'
+        cpu = 'armv7'
+        endian = 'little'
+        EOF
+          meson setup build --cross-file cross-armv7.txt
+          meson compile -C build
+        fi
+
+    - name: Verify binary architecture
+      run: |
+        # 查找编译生成的二进制文件
+        BINARY=$(find . -name "wayst" -type f -executable | head -n 1)
+        if [ -n "$BINARY" ]; then
+          echo "Found binary: $BINARY"
+          file $BINARY
+          arm-linux-gnueabihf-readelf -h $BINARY
+        else
+          echo "Binary not found, listing all files:"
+          find . -type f -executable
+        fi
+
+    - name: Package artifacts
+      run: |
+        mkdir -p artifacts
+        find . -name "wayst" -type f -executable -exec cp {} artifacts/ \;
+        cd artifacts
+        tar -czf wayst-armv7-hf.tar.gz *
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: wayst-armv7-hf
+        path: artifacts/wayst-armv7-hf.tar.gz
+        retention-days: 30
+
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: artifacts/wayst-armv7-hf.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
